@@ -28,7 +28,7 @@ app = Flask(__name__)
 
 _lock = threading.Lock()
 _last_seen = None
-_online = True
+_online = False
 _last_online_at = None
 _offline_since = None
 
@@ -87,12 +87,19 @@ def _format_time(dt: datetime) -> str:
 def _send_telegram(text: str) -> bool:
     """Відправити повідомлення в Telegram. Повертає True при успіху."""
     if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "...":
+        app.logger.error("Telegram: TELEGRAM_TOKEN is not set!")
         return False
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         r = requests.post(url, json={"chat_id": CHAT_ID, "text": text}, timeout=10)
-        return r.status_code == 200
-    except Exception:
+        if r.status_code == 200:
+            app.logger.info("Telegram: Повідомлення надіслано успішно")
+            return True
+        else:
+            app.logger.error(f"Telegram Error: {r.status_code} - {r.text}")
+            return False
+    except Exception as e:
+        app.logger.error(f"Telegram Exception: {e}")
         return False
 
 
@@ -146,6 +153,7 @@ def main():
     _load_state()
     t = threading.Thread(target=_background_check, daemon=True)
     t.start()
+    
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
 
 
