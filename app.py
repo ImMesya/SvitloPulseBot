@@ -53,6 +53,16 @@ def _load_state():
             _offline_since = None
     except Exception:
         pass
+    
+    # Після завантаження перевіряємо: якщо останній сигнал був занадто давно,
+    # ми вже не в мережі.
+    if _last_seen:
+        now = datetime.now(timezone.utc)
+        if (now - _last_seen).total_seconds() > HEARTBEAT_TIMEOUT_SEC:
+            _online = False
+            # Якщо ми офлайн, але немає часу початку, ставимо час останнього сигналу як приблизний
+            if _offline_since is None:
+                _offline_since = _last_seen
 
 
 def _save_state():
@@ -81,7 +91,9 @@ def _format_duration(seconds: float) -> str:
 
 
 def _format_time(dt: datetime) -> str:
-    return dt.strftime("%d.%m %H:%M")
+    # Конвертуємо UTC в місцевий час сервера (Київ)
+    local_dt = dt.astimezone(None) 
+    return local_dt.strftime("%d.%m %H:%M")
 
 
 def _send_telegram(text: str) -> bool:
@@ -140,10 +152,13 @@ def heartbeat():
         _online = True
         if was_offline or _last_online_at is None:
             _last_online_at = now
-        if was_offline and _offline_since is not None:
-            off_duration = (now - _offline_since).total_seconds()
+        if was_offline:
             msg = "✅ Світло увімкнули."
-            msg += f" Без світла було {_format_duration(off_duration)} (вимкнули о {_format_time(_offline_since)})."
+            if _offline_since is not None:
+                off_duration = (now - _offline_since).total_seconds()
+                msg += f" Без світла було {_format_duration(off_duration)} (вимкнули о {_format_time(_offline_since)})."
+            else:
+                msg += " (час вимкнення невідомий, сервер був вимкнений або перезавантажений)."
             _send_telegram(msg)
         _save_state()
     return {"ok": True, "last_seen": _last_seen.isoformat()}
